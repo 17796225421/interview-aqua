@@ -17,3 +17,4 @@ $ gcc name.c -o name.o && objdump  -t name.o | grep func
 
 这就导致了C编译器不支持函数重载。
 
+  
