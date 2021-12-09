@@ -1,105 +1,56 @@
-###  mmp
+在Unix/Linux系统下读写文件，一般有两种方式。
 
-- 简介
+一种是open一个文件，然后使用[read系统](https://www.zhihu.com/search?q=read系统&search_source=Entity&hybrid_search_source=Entity&hybrid_search_extra={"sourceType"%3A"article"%2C"sourceId"%3A69555454})调用读取文件的一部分或全部。这个read过程是这样的：内核将文件中的数据从磁盘区域读取到内核页[高速缓冲区](https://www.zhihu.com/search?q=高速缓冲区&search_source=Entity&hybrid_search_source=Entity&hybrid_search_extra={"sourceType"%3A"article"%2C"sourceId"%3A69555454})，再从内核的高速缓冲区读取到用户进程的地址空间。这里就涉及到了数据的两次拷贝：磁盘->内核，内核->用户态。
 
-  - `mmp`函数
-  - 借组共享内存放磁盘文件，借组指针访问磁盘文件
-  - 父子进程、血缘关系进程 通信
-  - 匿名映射区
+而且当存在多个进程同时读取同一个文件时，每一个进程中的[地址空间](https://www.zhihu.com/search?q=地址空间&search_source=Entity&hybrid_search_source=Entity&hybrid_search_extra={"sourceType"%3A"article"%2C"sourceId"%3A69555454})都会保存一份副本，这样肯定不是最优方式的，造成了[物理内存](https://www.zhihu.com/search?q=物理内存&search_source=Entity&hybrid_search_source=Entity&hybrid_search_extra={"sourceType"%3A"article"%2C"sourceId"%3A69555454})的浪费。看下图：
 
-- 函数
 
-  ```c
-  #include <sys/mman.h>
+
+![img](image/v2-b1ed113ee5e9ee4e44f585f50e9fbb6e_1440w.jpg)
+
+
+
+**第二种方式就是使用内存映射的方式**。具体操作方式是：open一个文件，然后调用mmap系统调用，将文件的内容的全部或一部分直接映射到进程的地址空间，映射完成后，进程可以像访问普通内存一样做其他的操作，比如memcpy等等。mmap并不分配物理地址空间，它只是占有进程的虚拟地址空间。这跟第一种方式不一样的，第一种方式需要预先分配好物理内存，内核才能将页高速缓冲中的文件数据拷贝到用户进程指定的内存空间中。
+
+
+
+而第二种方式，当多个进程需要同时访问同一个文件时，每个进程都将文件所存储的内核高速缓冲映射到自己的进程地址空间。当第一个进程访问内核中的缓冲区时候，前面讲过并没有实际拷贝数据，这时MMU在地址映射表中是无法找到与地址空间相对应的物理地址的，也就是MMU失败，就会触发[缺页中断](https://www.zhihu.com/search?q=缺页中断&search_source=Entity&hybrid_search_source=Entity&hybrid_search_extra={"sourceType"%3A"article"%2C"sourceId"%3A69555454})。内核将文件的这一页数据读入到内核高速缓冲区中，并更新进程的页表，使页表指向内核缓冲中的这一页。之后有其他的进程再次访问这一页的时候，该页已经在内存中了，内核只需要将进程的页表登记并且指向内核的页高速缓冲区即可。如下图所示：
+
+
+
+![img](image/v2-a1c7303b982b50cd195b3b3d359fd57f_1440w.jpg)
+
+
+
+**上面只是讲述了基本原理，下篇文章继续深入内核源码一探究竟。下面mmap使用方法（经供参考）：**
+
+```c
+#include <sys/mman.h> /* for mmap and munmap */
+#include <sys/types.h> /* for open */
+#include <sys/stat.h> /* for open */
+#include <fcntl.h>     /* for open */
+#include <unistd.h>    /* for lseek and write */
+#include <stdio.h>
+ 
+int main(int argc, char **argv)
+{
+  int fd;
+  char *mapped_mem, * p;
+  int flength = 1024;
+  void * start_addr = 0;
+ 
+  fd = open(argv[1], O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+  flength = lseek(fd, 1, SEEK_END);
+  write(fd, "\0", 1); /* 在文件最后添加一个空字符，以便下面printf正常工作 */
+  lseek(fd, 0, SEEK_SET);
+  mapped_mem = mmap(start_addr, flength, PROT_READ,        //允许读
+    MAP_PRIVATE,       //不允许其它进程访问此内存区域
+      fd, 0);
   
-  void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
-  ```
-
-  函数返回的是：创建映射区的首地址，失败返回
-
-  ```c
-  MAP_FAILED
-  ```
-
-  。
-
-  - 参数
-    - `addr`：直接传入 `NULL`
-    - `length`：欲创建映射区的大小
-    - `prot`：**映射区权限**：`PORT_READ、PORT_WRITE、PORT_READ|PORT_WRITE`。
-    - `flags`：标志参数。是否会将映射区所作的修改反映到物理设备（磁盘）上。
-         a).`MAP_SHARED`：会
-         b). `MAP_PRIVATE`：不会
-    - `fd`：用来创建映射区的文件描述符
-    - `offset`：映射文件的偏移。(4k的整倍数)
-  - 注意事项
-    - 不能创建0字节大小的映射区，因此新创建出来的文件不能用于创建映射区
-    - 权限
-         a). 创建映射区的权限，要小于等于打开文件权限
-         b). 创建映射区的过程中，隐含着一次对打开文件的读操作。
-    - `offset`: 必须是4k的整数倍,`mmu`创建的最小大小就是4k
-    - 关闭fd，对`mmap`无影响。
-
-- 父子进程通信
-
-  父子进程之间的也可以通过
-
-  ```c
-  mmap
-  ```
-
-  建立的映射区来完成数据通信。但是
-
-  ```
-  mmap
-  ```
-
-  函数的
-
-  ```
-  flags
-  ```
-
-  标志位应该设置
-
-  ```
-  flags=MAP_SHARED
-  ```
-
-  。
-
-  - 父子进程共享：
-
-    - 打开的文件描述符
-    - `mmap`建立的映射区。
-
-  - 匿名映射
-
-    由于
-
-    ```
-    mmap
-    ```
-
-    需要在进程之间通信时，需要借组一个文件描述符，但是对应的文件仅仅在通信期间存在，为了省略这一临时文件，产生匿名映射。
-
-    - Linux独有的方法：宏`MAP_ANONYMOUS/MAP_ANON`。
-      *`char\* pmem = mmap(NULL, len, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANON, -1, 0);`*
-
-    - 通用的方法：
-
-      ```c
-      int fd = open("/dev/zero", O_RDWR);
-      char* pmem = mmap(NULL, len, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);  
-      ```
-
-    使用的是一个文件
-
-    ```
-    /dev/zero
-    ```
-
-    完成。
-
-- `mmap`实现无血缘关系进程间通信
-  实际上`mmp`是内核**借助文件**帮我们创建了一个映射区。多个进程利用该映射区完成书的传递。由于内核是多进程共享，因此无血缘关系的进程间也可以使用`mmap`完成数据通信。
+  /* 使用映射区域. */
+  printf("%s\n", mapped_mem); /* 为了保证这里工作正常，参数传递的文件名最好是一个文本文件 */
+  close(fd);
+  munmap(mapped_mem, flength);
+  return 0;
+}
+```
