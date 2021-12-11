@@ -120,7 +120,7 @@
 
 当用户访问的数据，**既不在缓存中，也不在数据库中**，导致请求在访问缓存时，发现缓存缺失，再去访问数据库时，发现数据库中也没有要访问的数据，没办法构建缓存数据，来服务后续的请求。那么当有大量这样的请求到来时，数据库的压力骤增，这就是**缓存穿透**的问题。
 
-![图片](image/640-1639200365579520.webp)
+![图片](https://mmbiz.qpic.cn/mmbiz_png/J0g14CUwaZf6AeSYo05YHWBXHrpibN5PsBtaAXRGRdLAyR5BV6UVGJxxxbFj0xsiacI6KLhicuIachY3icibOBSzUGA/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1)
 
 缓存穿透的发生一般有这两种情况：
 
