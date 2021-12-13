@@ -92,16 +92,8 @@ curl小心翼翼的发送了一个HTTP请求过去，对方竟然回信了：
 
 简单了解了情况后，unhide拍拍胸脯说到：“这事交给我了，一定把这家伙给揪出来”
 
-随后，unhide一阵操作猛如虎，输出了几行信息：
-
 ```
-Found HIDDEN PID 13053
-    Executable: "/usr/bin/pamdicks"
-    $USER=root
-
-Found HIDDEN PID 13064
-    Executable: "/usr/bin/pamdicks"
-    $USER=root
+xxxxxxxxxx Found HIDDEN PID 13053    Executable: "/usr/bin/pamdicks"    $USER=rootFound HIDDEN PID 13064    Executable: "/usr/bin/pamdicks"    $USER=root
 ```
 
 众人皆凑了过来，瞪大了眼睛，unhide老哥果然不是盖的，果真发现了几个可疑分子。
