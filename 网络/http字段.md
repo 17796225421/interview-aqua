@@ -4,9 +4,9 @@
 
 客户端发送请求时，用来指定服务器的域名。
 
-![图片](image/640.webp)
 
 
+![img](image/1616141242-wTtaMV-file_1616141241371.png)
 
 ```
 Host: www.A.com
